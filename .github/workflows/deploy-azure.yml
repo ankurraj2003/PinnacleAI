@@ -1,0 +1,52 @@
+name: Deploy to Azure Container Apps
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push API image
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/pinnacle-api:${{ github.sha }} -f apps/api/Dockerfile .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/pinnacle-api:${{ github.sha }}
+
+      - name: Build and push Agents image
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/pinnacle-agents:${{ github.sha }} -f packages/agents/Dockerfile .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/pinnacle-agents:${{ github.sha }}
+
+      - name: Deploy API to Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          appSourcePath: ${{ github.workspace }}
+          acrName: ${{ secrets.ACR_NAME }}
+          containerAppName: pinnacle-api
+          resourceGroup: rg-pinnacle-ai
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/pinnacle-api:${{ github.sha }}
+
+      - name: Deploy Agents to Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          appSourcePath: ${{ github.workspace }}
+          acrName: ${{ secrets.ACR_NAME }}
+          containerAppName: pinnacle-agents
+          resourceGroup: rg-pinnacle-ai
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/pinnacle-agents:${{ github.sha }}
